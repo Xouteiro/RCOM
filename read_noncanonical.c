@@ -97,11 +97,8 @@ int main(int argc, char *argv[])
         int bytes = read(fd, buf, BUF_SIZE);
         buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
 
-        printf("buf0 = 0x%02x\n", (unsigned char)buf[0]);
-        printf("buf1 = 0x%02x\n", (unsigned char)buf[1]);
-        printf("buf2 = 0x%02x\n", (unsigned char)buf[2]);
-        printf("buf3 = 0x%02x\n", (unsigned char)buf[3]);
-        printf("buf4 = 0x%02x\n", (unsigned char)buf[4]);
+        for(int i = 0; i < bytes ; i++)
+            printf("buf%d = 0x%02x\n",i, (unsigned char)buf[i]);
 
       
         if(buf!=0){
