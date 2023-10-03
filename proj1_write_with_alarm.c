@@ -36,6 +36,11 @@ void alarmHandler(int signal)
     printf("Alarm #%d\n", alarmCount);
 }
 
+void sendFrame(int fd, unsigned char *buf){
+    int bytes = write(fd, buf, BUF_SIZE);  
+    alarm(3);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -109,24 +114,10 @@ int main(int argc, char *argv[])
     buf[0] = 0x7E;
     buf[1] = 0x03;
     buf[2] = 0x03;
-    buf[3] = 0x03 ^ 0x03;
+    buf[3] = buf[1] ^ buf[2];
     buf[4] = 0x7E;
     
-
-/*
-    for (int i = 0; i < BUF_SIZE; i++)
-    {
-        buf[i] = 'a' + i % 26;
-    }
-*/
-    // In non-canonical mode, '\n' does not end the writing.
-    // Test this condition by placing a '\n' in the middle of the buffer.
-    // The whole buffer must be sent even with the '\n'.
-    //buf[5] = '\n';
-
-    int bytes = write(fd, buf, BUF_SIZE);
-   
-    alarm(3);
+    sendFrame(fd, buf);
 
     unsigned char ua_buf[BUF_SIZE];
     
@@ -134,23 +125,19 @@ int main(int argc, char *argv[])
         // Returns after 5 chars have been input
         int bytes = read(fd, ua_buf, BUF_SIZE);
         if (bytes && ua_buf[0] == 0x7E && ua_buf[1] == 0x03 
-          && ua_buf[2] == 0x07 && ua_buf[3] == 0x03 ^ 0x07
+          && ua_buf[2] == 0x07 && ua_buf[3] == ua_buf[1] ^ ua_buf[2]
           && ua_buf[4] == 0x7E) {
             alarm(0);    
+
+            for(int i = 0 ; i < bytes ; i++)
+                printf("ua_buf%d = 0x%02x\n", i, (unsigned char)ua_buf[i]);
             
-            printf("ua_buf1 = 0x%02x\n", (unsigned char)ua_buf[0]);
-            printf("ua_buf1= 0x%02x\n", (unsigned char)ua_buf[1]);
-            printf("ua_buf1= 0x%02x\n", (unsigned char)ua_buf[2]);
-            printf("ua_buf1= 0x%02x\n", (unsigned char)ua_buf[3]);
-            printf("ua_buf1= 0x%02x\n", (unsigned char)ua_buf[4]);
-                
             STOP = TRUE;
         }
         else {
             if (alarmEnabled == FALSE)
               {
-                 int bytes = write(fd, buf, BUF_SIZE);
-                 alarm(3); // Set alarm to be triggered in 3s
+                 sendFrame(fd, buf);
                  alarmEnabled = TRUE;
               }
         }
