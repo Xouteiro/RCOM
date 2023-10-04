@@ -124,6 +124,7 @@ int main(int argc, char *argv[])
     while(STOP == FALSE && alarmCount < 4){
         // Returns after 5 chars have been input
         int bytes = read(fd, ua_buf, BUF_SIZE);
+        
         if (bytes && ua_buf[0] == 0x7E && ua_buf[1] == 0x03 
           && ua_buf[2] == 0x07 && ua_buf[3] == ua_buf[1] ^ ua_buf[2]
           && ua_buf[4] == 0x7E) {

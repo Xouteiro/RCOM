@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
+    newtio.c_cc[VTIME] = 1; // Inter-character timer unused
     newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
@@ -95,31 +95,26 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
-    printf("start1\n");
     printf("New termios structure set\n");
-    printf("start2\n");
+
 
     // Loop for input
     unsigned char buf[BUF_SIZE];
-    printf("start2\n"); 
 
     enum States currentState = START;
-    printf("start3\n");
 
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
-        printf("_read\n");
         int bytes = read(fd, buf, BUF_SIZE);
-
+        buf[bytes] = '\0';
+        
         int startOver = 0;
-        printf("read_\n");
 
         for(int i = 0; i < bytes  && !startOver; i++){
             switch (currentState)
             {
             case START:
-                printf("start\n");
                 if(buf[i]==0x7E){
                     currentState = FLAG_RCV;
                 }
@@ -129,8 +124,10 @@ int main(int argc, char *argv[])
                 break;
 
             case FLAG_RCV:
+                
                 if(buf[i]==0x03){
                     currentState = A_RCV;
+                    break;
                 }
                 if(buf[i]==0x7E) startOver = 1;
                 else{
@@ -140,8 +137,10 @@ int main(int argc, char *argv[])
                 break;
 
             case A_RCV:
+                
                 if(buf[i]==0x03){
                     currentState = C_RCV;
+                    break;
                 }
                 if(buf[i]==0x7E){
                     startOver = 1;
@@ -154,8 +153,10 @@ int main(int argc, char *argv[])
                 break;
 
             case C_RCV:
+                
                 if(buf[i] == 0x03 ^ 0x03){
                     currentState = BCC_OK;
+                    break;
                 }
                 if(buf[i]==0x7E){
                     startOver = 1;
@@ -170,6 +171,7 @@ int main(int argc, char *argv[])
             case BCC_OK:
                 if(buf[i]==0x7E){
                     currentState = STOP_MACHINE;
+                    break;
                 } 
                 else{
                     currentState = START;
@@ -181,10 +183,8 @@ int main(int argc, char *argv[])
                 STOP = TRUE;
                 for(int i = 0; i < bytes ; i++)
                     printf("buf%d = 0x%02x\n",i, (unsigned char)buf[i]);
-    
-            
-            default:
                 break;
+                
             }
         }
         
