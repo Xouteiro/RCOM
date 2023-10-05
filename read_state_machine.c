@@ -110,8 +110,9 @@ int main(int argc, char *argv[])
         buf[bytes] = '\0';
         
         int startOver = 0;
+        int stop = 0;
 
-        for(int i = 0; i < bytes  && !startOver; i++){
+        for(int i = 0; i < bytes  && !startOver && !stop; i++){
             switch (currentState)
             {
             case START:
@@ -154,7 +155,7 @@ int main(int argc, char *argv[])
 
             case C_RCV:
                 
-                if(buf[i] == 0x03 ^ 0x03){
+                if(buf[i] == buf[1] ^ buf[2]){
                     currentState = BCC_OK;
                     break;
                 }
@@ -180,11 +181,12 @@ int main(int argc, char *argv[])
                 break;
             
             case STOP_MACHINE:
-                STOP = TRUE;
                 for(int i = 0; i < bytes ; i++)
                     printf("buf%d = 0x%02x\n",i, (unsigned char)buf[i]);
+                stop = 1;
+                STOP = TRUE;
                 break;
-                
+
             }
         }
         
@@ -198,7 +200,7 @@ int main(int argc, char *argv[])
     ua_buf[0] = 0x7E;
     ua_buf[1] = 0x03;
     ua_buf[2] = 0x07;
-    ua_buf[3] = 0x03 ^ 0x07;
+    ua_buf[3] = ua_buf[1] ^ ua_buf[2];
     ua_buf[4] = 0x7E;
     
     
