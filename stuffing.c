@@ -50,9 +50,9 @@ unsigned char buildBCC2(const char *payload){
 void stuffing(unsigned char *payload, unsigned char *new_payload){
     int index = 0;
     for(int i = 0; i < strlen(payload); i++){
-        printf("i is %d\n", i);
-        printf("index is %d\n", index);
-        printf("payload char is %c\n", payload[i]);
+        // printf("i is %d\n", i);
+        // printf("index is %d\n", index);
+        // printf("payload char is %c\n", payload[i]);;
         if(payload[i] == 0x7E){
             new_payload[index] = 0x7D;
             index++;
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
 
-    unsigned char* payload = "a~bc";
+    unsigned char* payload = "~~~Hello World!~~~";
     unsigned char new_payload[2*strlen(payload)];
     // stuffing of the payload
     stuffing(payload, new_payload);
@@ -158,7 +158,10 @@ int main(int argc, char *argv[])
     buf[pos] = buildBCC2(payload);
     buf[pos + 1] = 0x7E;
    
-
+    printf("buf size is %d\n", (int)strlen(buf));
+    for(int i = 0; i < 30; i++){
+        printf("buf%d = %c\n", i, (unsigned char)buf[i]);
+    }
     sendFrame(fd, buf);
 
     unsigned char ua_buf[BUF_SIZE];
