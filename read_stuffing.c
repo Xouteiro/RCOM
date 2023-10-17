@@ -32,11 +32,13 @@ enum States{
 
 volatile int STOP = FALSE;
 
-void destuffing(unsigned char *buf, unsigned char *destuf_buf){
+int destuffing(unsigned char *buf, unsigned char *destuf_buf){
     int index = 1;
+    int final_lenght = 1;
+    int i = 1;
     destuf_buf[0] = 0x7E;
     //printf("strlen(buf) is %d\n",(unsigned int) strlen(buf));
-    for(int i = 1; i < 30 - 1; i++){ //corrigir o 30, strlen(buf) esta a dar 3 
+    while( buf[i] != 0x7E ){ //corrigir o 30, strlen(buf) esta a dar 3 
         
         if(buf[i] == 0x7D && buf[i+1] == 0x5E){
             destuf_buf[index] = 0x7E;
@@ -49,12 +51,17 @@ void destuffing(unsigned char *buf, unsigned char *destuf_buf){
         else destuf_buf[index] = buf[i];
 
         index++;
+        final_lenght++;
+        i++;
     }
+    destuf_buf[index] = 0x7E;
+    return final_lenght;
 }
 
 unsigned char buildBCC2(const char *payload){
-    unsigned char bcc2 = payload[0];
-    for(int i = 1 ; i < strlen(payload) ; i++) bcc2 = bcc2 ^ payload[i];
+    unsigned char bcc2 = payload[4];
+    printf("len payload = %d\n", (int)strlen(payload)) ;
+    for(int i = 5 ; i < strlen(payload) ; i++) bcc2 = bcc2 ^ payload[i];
     return bcc2; 
 }
 
@@ -102,7 +109,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 1; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 5;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -130,17 +137,23 @@ int main(int argc, char *argv[])
     while (STOP == FALSE)
     {
         // Returns after 5 chars have been input
-        sleep(2); //talvez trocar para ler byte a byte
-
+        //sleep(2); //talvez trocar para ler byte a byte
+    
         int bytes = read(fd, buf, BUF_SIZE);
+        for(int i = 0; i < bytes; i++){
+            printf("buf before destuf%d: %c \n", i, (unsigned char)buf[i]);
+        }
+            
         
 
         unsigned char destuf_buf[bytes];
-        destuffing(buf, destuf_buf);
+        int destuf_size = destuffing(buf, destuf_buf);
         unsigned char bcc2 = buildBCC2(destuf_buf);
+        printf("bcc2 = %02x\n", bcc2);
+        printf("bcc2 is %c\n", bcc2 );
         
 
-        for(int i = 0; i<30; i++){
+        for(int i = 0; i< destuf_size; i++){
             printf("destuf_buf%d = %c\n", i, (unsigned char)destuf_buf[i]);
         }
 

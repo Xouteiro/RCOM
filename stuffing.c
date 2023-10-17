@@ -36,8 +36,9 @@ void alarmHandler(int signal)
     printf("Alarm #%d\n", alarmCount);
 }
 
-void sendFrame(int fd, unsigned char *buf){
-    int bytes = write(fd, buf, BUF_SIZE);  
+void sendFrame(int fd, unsigned char *buf, int n){
+    int bytes = write(fd, buf, n);  
+    printf("bytes: %d \n", bytes);
     alarm(3);
 }
 
@@ -47,7 +48,7 @@ unsigned char buildBCC2(const char *payload){
     return bcc2; 
 }
 
-void stuffing(unsigned char *payload, unsigned char *new_payload){
+int stuffing(unsigned char *payload, unsigned char *new_payload){
     int index = 0;
     for(int i = 0; i < strlen(payload); i++){
         // printf("i is %d\n", i);
@@ -67,6 +68,7 @@ void stuffing(unsigned char *payload, unsigned char *new_payload){
 
         index++;
     }
+    return index;
 }
 
 int main(int argc, char *argv[])
@@ -137,10 +139,10 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
 
-    unsigned char* payload = "~~~Hello World!~~~";
+    unsigned char *payload = "~~~Hello World!~~~";
     unsigned char new_payload[2*strlen(payload)];
     // stuffing of the payload
-    stuffing(payload, new_payload);
+    int new_payload_size = stuffing(payload, new_payload);
 
     // Create string to send
     unsigned char buf[BUF_SIZE];
@@ -150,19 +152,22 @@ int main(int argc, char *argv[])
     buf[3] = buf[1] ^ buf[2];
     long pos = 4;
     // fill buffer with stuffed payload
-    for(int i = 0; i < strlen(new_payload); i++){
+
+    for(int i = 0; i < new_payload_size ; i++){
         buf[pos] = new_payload[i];
         pos++;
     }
     // build the bcc2 with the payload
     buf[pos] = buildBCC2(payload);
-    buf[pos + 1] = 0x7E;
-   
-    printf("buf size is %d\n", (int)strlen(buf));
-    for(int i = 0; i < 30; i++){
+    printf("bcc2 is %02x\n", buf[pos]);
+    buf[pos++] = 0x7E;
+    
+
+    sendFrame(fd, buf, pos);
+
+    for(int i = 0; i < pos; i++){
         printf("buf%d = %c\n", i, (unsigned char)buf[i]);
     }
-    sendFrame(fd, buf);
 
     unsigned char ua_buf[BUF_SIZE];
     
@@ -182,7 +187,7 @@ int main(int argc, char *argv[])
         else {
             if (alarmEnabled == FALSE)
               {
-                 sendFrame(fd, buf);
+                 //sendFrame(fd, buf);
                  alarmEnabled = TRUE;
               }
         }
