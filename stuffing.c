@@ -42,32 +42,34 @@ void sendFrame(int fd, unsigned char *buf, int n){
     alarm(3);
 }
 
-unsigned char buildBCC2(const char *payload){
+unsigned char buildBCC2(const char *payload, int n){
     unsigned char bcc2 = payload[0];
-    for(int i = 1 ; i < strlen(payload) ; i++) bcc2 = bcc2 ^ payload[i];
+    for(int i = 1 ; i < n; i++) bcc2 = bcc2 ^ payload[i];
     return bcc2; 
 }
 
-int stuffing(unsigned char *payload, unsigned char *new_payload){
-    int index = 0;
-    for(int i = 0; i < strlen(payload); i++){
+int stuffing(unsigned char *buf, unsigned char *new_buf, int n){
+    int index = 1;
+    new_buf[0]=buf[0];
+    for(int i = 1; i < n ; i++){
         // printf("i is %d\n", i);
         // printf("index is %d\n", index);
         // printf("payload char is %c\n", payload[i]);;
-        if(payload[i] == 0x7E){
-            new_payload[index] = 0x7D;
+        if(buf[i] == 0x7E){
+            new_buf[index] = 0x7D;
             index++;
-            new_payload[index] = 0x5E;
+            new_buf[index] = 0x5E;
         }
-        else if (payload[i] == 0x7D){
-            new_payload[index] = 0x7D;
+        else if (buf[i] == 0x7D){
+            new_buf[index] = 0x7D;
             index++;
-            new_payload[index] = 0x5D;
+            new_buf[index] = 0x5D;
         }
-        else new_payload[index] = payload[i];
+        else new_buf[index] = buf[i];
 
         index++;
     }
+    new_buf[index] = buf[n];
     return index;
 }
 
@@ -140,9 +142,9 @@ int main(int argc, char *argv[])
 
 
     unsigned char *payload = "~~~Hello World!~~~";
-    unsigned char new_payload[2*strlen(payload)];
+    unsigned char new_buf[2*strlen(payload)];
     // stuffing of the payload
-    int new_payload_size = stuffing(payload, new_payload);
+    
 
     // Create string to send
     unsigned char buf[BUF_SIZE];
@@ -153,20 +155,24 @@ int main(int argc, char *argv[])
     long pos = 4;
     // fill buffer with stuffed payload
 
-    for(int i = 0; i < new_payload_size ; i++){
-        buf[pos] = new_payload[i];
+    for(int i = 0; i < strlen(payload) ; i++){
+        buf[pos] = payload[i];
         pos++;
     }
     // build the bcc2 with the payload
-    buf[pos] = buildBCC2(payload);
+    buf[pos] = buildBCC2(payload, strlen(payload));
     printf("bcc2 is %02x\n", buf[pos]);
-    buf[pos++] = 0x7E;
+    pos++;
+    buf[pos] = 0x7E;
     
+    for(int i = 0; i <= pos  ; i++){
+        printf("buf%d = %02x\n", i, (unsigned char)buf[i]);
+    }
+    int new_buf_size = stuffing(buf, new_buf, pos);
+    sendFrame(fd, new_buf, new_buf_size+1);
 
-    sendFrame(fd, buf, pos);
-
-    for(int i = 0; i < pos; i++){
-        printf("buf%d = %c\n", i, (unsigned char)buf[i]);
+    for(int i = 0; i <= new_buf_size ; i++){
+        printf("new_buf%d = %02x\n", i, (unsigned char)new_buf[i]);
     }
 
     unsigned char ua_buf[BUF_SIZE];
@@ -180,7 +186,7 @@ int main(int argc, char *argv[])
             alarm(0);    
 
             for(int i = 0 ; i < bytes ; i++)
-                printf("ua_buf%d = 0x%02x\n", i, (unsigned char)ua_buf[i]);
+                printf("ua_buf%d = 0x%02x && %c\n", i, (unsigned char)ua_buf[i], (unsigned char)ua_buf[i]);
             
             STOP = TRUE;
         }

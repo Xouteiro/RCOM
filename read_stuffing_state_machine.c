@@ -28,18 +28,18 @@ enum States{
     C_RCV,
     BCC1_OK,
     PAYLOAD,
+    CHECK_BCC2,
+    BCC2_OK,
     STOP_MACHINE
 };
 
 volatile int STOP = FALSE;
 
-int destuffing(unsigned char *buf, unsigned char *destuf_buf){
+int destuffing(unsigned char *buf, unsigned char *destuf_buf, int n){
     int index = 1;
     int final_lenght = 1;
-    int i = 1;
-    destuf_buf[0] = 0x7E;
-    //printf("strlen(buf) is %d\n",(unsigned int) strlen(buf));
-    while( buf[i] != 0x7E ){ //corrigir o 30, strlen(buf) esta a dar 3 
+
+    for(int i = 0 ; i < n; i++){ //usar o n 
         
         if(buf[i] == 0x7D && buf[i+1] == 0x5E){
             destuf_buf[index] = 0x7E;
@@ -53,16 +53,14 @@ int destuffing(unsigned char *buf, unsigned char *destuf_buf){
 
         index++;
         final_lenght++;
-        i++;
     }
-    destuf_buf[index] = 0x7E;
+
     return final_lenght;
 }
 
-unsigned char buildBCC2(const char *payload){
-    unsigned char bcc2 = payload[4];
-    printf("len payload = %d\n", (int)strlen(payload)) ;
-    for(int i = 5 ; i < strlen(payload) ; i++) bcc2 = bcc2 ^ payload[i];
+unsigned char buildBCC2(const char *payload, int n){
+    unsigned char bcc2 = payload[0];
+    for(int i = 0 ; i < n - 1 ; i++) bcc2 = bcc2 ^ payload[i];
     return bcc2; 
 }
 
@@ -109,8 +107,8 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 1; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -134,158 +132,167 @@ int main(int argc, char *argv[])
 
     // Loop for input
     unsigned char buf[BUF_SIZE];
-    unsigned char payload[1000];
-    unsigned char byte;
-    int i = 0;
-    int p = 0;
+    
     enum States currentState = START;
 
     while (STOP == FALSE)
     {
         int startOver = 0;
         int stop = 0;
-        
-        if(read(fd, &byte, 1)>0){
-            printf("byte: %c \n" , byte );
-            switch (currentState)
-            {
-            case START:
-                if(byte==0x7E){
-                    buf[i] = byte;
-                    i++;
-                    currentState = FLAG_RCV;
-                }
-                else{
-                    startOver = 1;
-                    i = 0;
-                }
-                break;
+        unsigned char stuffed_payload[1000];
+        unsigned char destuffed_payload[500];
+        unsigned char byte;
+        int i = 0;
+        int p = 0;
+        int read_success = 0;
+        int destuf_size;
 
-            case FLAG_RCV:
-                
-                if(byte==0x03){
-                    buf[i] = byte;
-                    i++;
-                    currentState = A_RCV;
-                    break;
-                }
-                if(byte==0x7E){
-                    startOver = 1;
-                    i = 0;
-                 }
-                else{
-                    currentState = START;
-                    startOver = 1;
-                    i = 0;
-                }
-                break;
-
-            case A_RCV:
-                
-                if(byte==0x03){
-                    buf[i] = byte;
-                    i++;
-                    currentState = C_RCV;
-                    break;
-                }
-                if(byte==0x7E){
-                    startOver = 1;
-                    i = 0;
-                    currentState = FLAG_RCV;
-                } 
-                else{
-                    currentState = START;
-                    startOver = 1;
-                    i = 0;
-                }
-                break;
-
-            case C_RCV:
-                
-                if(byte == buf[1] ^ buf[2]){
-                    buf[i] = byte;
-                    i++;
-                    currentState = PAYLOAD;
-                    break;
-                }
-                if(byte == 0x7E){
-                    startOver = 1;
-                    i = 0;
-                    currentState = FLAG_RCV;
-                } 
-                else{
-                    currentState = START;
-                    startOver = 1;
-                    i = 0;
-                }
-                break;
-
-           
-                
-            case PAYLOAD:
-                if(byte==0x7E){
-                    buf[i] = byte;
-                    currentState = CHECK_BCC2;
-                    break;
-                }
-                else{
-                    stuffed_payload[p] = byte;
-                    buf[i] = byte;
-                    p++;
-                    i++;
-                    break;
-                }
+        while(!startOver && !stop){
             
-            
-                break;
-            
-            case CHECK_BCC2:
-                unsigned char destuffed_payload[p];
-                destuffing(stuffed_payload, destuffed_payload, p); //fazer destuff a tudo e deitar fora o bcc2 para depois comparar
-                int bcc2 = buildBCC2(destuffed_payload);
-                if(bcc2 == 
-             
-                break;
+            if(read(fd, &byte, 1)>0 || read_success){
+                printf("%d\n", currentState); 
+                printf("rs = %d\n", read_success);
+                printf("byte: %c \n" , (unsigned char) byte );
                 
-            case BCC2_OK:
-                if(byte==0x7E){
-                    buf[i] = byte;
-                    i++;
-                    currentState = STOP_MACHINE;
+                printf("byte: %02x \n" , (unsigned char) byte );
+                printf("i=%d\n", (int) i);
+                switch (currentState)
+                {
+                case START:
+                    if(byte==0x7E){
+                        buf[i] = byte;
+                        i++;
+                        currentState = FLAG_RCV;
+                    }
+                    else{
+                        startOver = 1;
+                        i = 0;
+                    }
                     break;
-                } 
-                else{
-                    currentState = START;
-                    startOver = 1;
-                    i = 0;
-                }
-                break;
-            
-            case STOP_MACHINE:
-                for(int j = 0; j < i ; j++)
-                    printf("buf%d = 0x%02x\n",j, (unsigned char)buf[j]);
-                stop = 1;
-                STOP = TRUE;
-                break;
 
+                case FLAG_RCV:
+                    if(byte==0x03){
+                        buf[i] = byte;
+                        i++;
+                        currentState = A_RCV;
+                        break;
+                    }
+                    if(byte==0x7E){
+                        startOver = 1;
+                        i = 0;
+                    }
+                    else{
+                        currentState = START;
+                        startOver = 1;
+                        i = 0;
+                    }
+                    break;
+
+                case A_RCV:
+                    if(byte==0x03){
+                        buf[i] = byte;
+                        i++;
+                        currentState = C_RCV;
+                        break;
+                    }
+                    if(byte==0x7E){
+                        startOver = 1;
+                        i = 0;
+                        currentState = FLAG_RCV;
+                    } 
+                    else{
+                        currentState = START;
+                        startOver = 1;
+                        i = 0;
+                    }
+                    break;
+
+                case C_RCV:
+                    
+                    if(byte == buf[1] ^ buf[2]){
+                        buf[i] = byte;
+                        i++;
+                        currentState = PAYLOAD;
+                        break;
+                    }
+                    if(byte == 0x7E){
+                        startOver = 1;
+                        i = 0;
+                        currentState = FLAG_RCV;
+                    } 
+                    else{
+                        currentState = START;
+                        startOver = 1;
+                        i = 0;
+                    }
+                    break;
+
+            
+                    
+                case PAYLOAD:
+                    if(byte==0x7E){
+                        buf[i] = byte;
+                        read_success = 1;
+                        for(int k = 0; k< p; k++){
+                            printf("stpl= 0x%02x\n",stuffed_payload[k]);
+                        }
+                        currentState = CHECK_BCC2;
+                        break;
+                    }
+                    else{
+                        stuffed_payload[p] = byte;
+                        buf[i] = byte;
+                        p++;
+                        i++;
+                    }
+                
+                    break;
+                
+                case CHECK_BCC2:
+                    destuf_size=destuffing(stuffed_payload, destuffed_payload, p); 
+                    int bcc2 = buildBCC2(destuffed_payload, destuf_size);
+                    if(bcc2 == destuffed_payload[destuf_size-1]){
+                        currentState = BCC2_OK;
+                        break;
+                    }
+                    else{
+                        currentState = START;
+                        startOver = 1;
+                        i = 0;
+                        read_success=0;
+                    }
+                
+                    break;
+                    
+                case BCC2_OK:
+                    if(byte==0x7E){
+                        buf[i] = byte;
+                        i++;
+                        currentState = STOP_MACHINE;
+                        break;
+                    } 
+                    else{
+                        currentState = START;
+                        startOver = 1;
+                        i = 0;
+                    }
+                    break;
+                
+                case STOP_MACHINE:
+                    for(int j = 0; j < i ; j++)
+                        printf("buf%d = 0x%02x\n",j, (unsigned char)buf[j]);
+                    read_success = 0;
+                    stop = 1;
+                    STOP = TRUE;
+                    break;
+                    }
+                
+            
             }
-           
         }
         
+    
 
-        //unsigned char destuf_buf[bytes];
-        //int destuf_size = destuffing(buf, destuf_buf);
-        //unsigned char bcc2 = buildBCC2(destuf_buf);
-        //printf("bcc2 = %02x\n", bcc2);
-        //printf("bcc2 is %c\n", bcc2 );
-        
-
-        //for(int i = 0; i< destuf_size; i++){
-          //  printf("destuf_buf%d = %c\n", i, (unsigned char)destuf_buf[i]);
-        //}
-
-        
-        
     }
 
     
