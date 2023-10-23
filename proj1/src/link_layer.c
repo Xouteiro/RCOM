@@ -174,7 +174,7 @@ int llopen(LinkLayer connectionParameters) {
                     }
                 }
             }
-            break;
+            return fd;
         }
 
         case LlRx: {
