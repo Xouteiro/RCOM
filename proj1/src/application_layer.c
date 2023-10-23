@@ -15,8 +15,7 @@
 #include <errno.h>
 
 
-unsigned char*  parseControlPacket(unsigned char* packet, int size, int *nameSize) {
-
+unsigned char* parseControlPacket(unsigned char* packet, int size, int* nameSize) {
     unsigned char fileSizeNBytes = packet[6];
     unsigned char fileSizeAux[fileSizeNBytes];
     memcpy(fileSizeAux, packet+7, fileSizeNBytes);
@@ -27,8 +26,7 @@ unsigned char*  parseControlPacket(unsigned char* packet, int size, int *nameSiz
     return name;
 }
 
-unsigned char * getControlPacket(const unsigned int c, const char* filename, long int length, unsigned int* size){
-
+unsigned char* getControlPacket(const unsigned int c, const char* filename, long int length, unsigned int* size) {
     const int L1 = (int) ceil(log2f((float)length)/8.0);
     const int L2 = strlen(filename);
     *size = 1+2+L1+2+L2;
@@ -50,8 +48,7 @@ unsigned char * getControlPacket(const unsigned int c, const char* filename, lon
     return packet;
 }
 
-unsigned char * getDataPacket(unsigned char sequence, unsigned char *data, int dataSize, int *packetSize){
-
+unsigned char* getDataPacket(unsigned char sequence, unsigned char* data, int dataSize, int* packetSize) {
     *packetSize = 1 + 1 + 2 + dataSize;
     unsigned char* packet = (unsigned char*)malloc(*packetSize);
 
@@ -64,9 +61,8 @@ unsigned char * getDataPacket(unsigned char sequence, unsigned char *data, int d
     return packet;
 }
 
-unsigned char * getData(FILE* fd, long int fileLength) {
+unsigned char* getData(FILE* fd, long int fileLength) {
     unsigned char* content = (unsigned char*)malloc(sizeof(unsigned char) * fileLength);
-    int check = fread(content, sizeof(unsigned char), fileLength, fd);
     return content;
 }
 
@@ -75,9 +71,8 @@ void parseDataPacket(const unsigned char* packet, const unsigned int packetSize,
     buffer += packetSize;
 }
 
-void applicationLayer(const char *serialPort, const char *role, int baudRate,
-                      int nTries, int timeout, const char *filename)
-{
+void applicationLayer(const char* serialPort, const char* role, int baudRate,
+                      int nTries, int timeout, const char* filename) {
     LinkLayer linkLayer;
     strcpy(linkLayer.serialPort,serialPort);
     linkLayer.role = strcmp(role, "tx") ? LlRx : LlTx;
@@ -93,9 +88,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     }
 
     switch (linkLayer.role) {
-
         case LlTx: {
-            
             FILE* file = fopen(filename, "rb");
             printf("file: %p\n", file);
             printf("filename: %s\n", filename);
@@ -142,8 +135,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 sequence = (sequence + 1) % 255;   
             }
 
-            
-
             unsigned char *controlPacketEnd = getControlPacket(3, filename, fileSize, &cpSize);
             if(llwrite(fd, controlPacketEnd, cpSize) == -1) { 
                 printf("Exit: error in end packet\n");
@@ -154,12 +145,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         case LlRx: {
-
             unsigned char *packet = (unsigned char *)malloc(MAX_PAYLOAD_SIZE);
             int packetSize = -1;
+
             while ((packetSize = llread(fd, packet)) < 0);
-            int nameSize  = 0;
-            unsigned char* name = parseControlPacket(packet, packetSize, &nameSize);  
             
             FILE* newFile = fopen((char *) "penguin-received.gif", "wb+");
             if(newFile == NULL) {
@@ -173,10 +162,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 else if(packet[0] != 3){
                     unsigned char *buffer = (unsigned char*)malloc(packetSize);
                     parseDataPacket(packet, packetSize, buffer);
-                    int check = fwrite(buffer, sizeof(unsigned char), packetSize-5, newFile);
-
                     free(buffer);
-                    
                 }
                 else break;
             }
@@ -187,7 +173,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             while((disc=llread(fd, packet)) < 0);
             
             break;
-    }
+        }
+        
         default:
             exit(-1);
             break;
