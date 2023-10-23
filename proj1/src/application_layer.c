@@ -47,7 +47,6 @@ unsigned char * getControlPacket(const unsigned int c, const char* filename, lon
     packet[pos++]=1;
     packet[pos++]=L2;
     memcpy(packet+pos, filename, L2);
-    for(int i = 0; i < *size; i++) printf("packet= %02x && %c\n", packet[i], packet[i]);
     return packet;
 }
 
@@ -72,7 +71,6 @@ unsigned char * getData(FILE* fd, long int fileLength) {
 }
 
 void parseDataPacket(const unsigned char* packet, const unsigned int packetSize, unsigned char* buffer) {
-    //for(int i = 3; i < packetSize; i++) printf("packet%d= %02x && %c\n",i, packet[i], packet[i]);
     memcpy(buffer,packet+4,packetSize-4);
     buffer += packetSize;
 }
@@ -151,7 +149,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 printf("Exit: error in end packet\n");
                 exit(-1);
             }
-            llclose(fd);
+            llclose(fd,0);
             break;
         }
 
@@ -171,13 +169,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             while (1) {   
                 packetSize = -1;
                 while ((packetSize=llread(fd, packet)) < 0);
-                printf("Packet size up: %d\n", packetSize);
                 if(packetSize == 0) break;
                 else if(packet[0] != 3){
                     unsigned char *buffer = (unsigned char*)malloc(packetSize);
                     parseDataPacket(packet, packetSize, buffer);
                     int check = fwrite(buffer, sizeof(unsigned char), packetSize-5, newFile);
-                    printf("check: %d\n", check);
 
                     free(buffer);
                     
@@ -187,10 +183,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
             fclose(newFile);
             printf("File closed\n");
+            int disc = -1;
+            while((disc=llread(fd, packet)) < 0);
+            
             break;
-
+    }
         default:
             exit(-1);
             break;
-    }}
+    }
 }

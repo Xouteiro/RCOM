@@ -9,6 +9,7 @@
 #define FALSE 0
 #define TRUE 1
 #define Byte_C(Ns) (Ns << 6)
+#define RR(Nr) ((Nr << 7) | 0x05)
 #define BUF_SIZE 5
 #define FLAG 0x7E
 
@@ -24,7 +25,8 @@ enum States{
     CHECK_BCC2,
     BCC2_OK,
     STOP_MACHINE,
-    STOP_MACHINE_UA
+    STOP_MACHINE_UA,
+    STOP_MACHINE_DISC
 };
 
 
@@ -154,6 +156,7 @@ int llopen(LinkLayer connectionParameters) //falta erro llopen
     switch (connectionParameters.role) {
 
         case LlTx:
+            (void) signal(SIGALRM, alarmHandler);
             unsigned char set_buf[5];
             set_buf[0] = 0x7E;
             set_buf[1] = 0x03;
@@ -313,6 +316,7 @@ int llwrite(int fd, const unsigned char *payload, int payloadSize)
     buf[0] = 0x7E;
     buf[1] = 0x03;
     buf[2] = Byte_C(tramaTr);
+    printf("buf2: %02x\n", buf[2]);
     buf[3] = buf[1] ^ buf[2];
     long pos = 4;
     // fill buffer with stuffed payload
@@ -323,14 +327,11 @@ int llwrite(int fd, const unsigned char *payload, int payloadSize)
     }
     // build the bcc2 with the payload
     buf[pos] = buildBCC2(payload, payloadSize); 
-    printf("bcc2 is %02x\n", buf[pos]);
     pos++;
     buf[pos] = 0x7E;
     
     int new_buf_size = stuffing(buf, new_buf, pos);
     sendFrame(fd, new_buf, new_buf_size+1);
-    for(int i = 0; i < new_buf_size+1 ; i++) printf("new_buf%d= %02x && %c\n",i, new_buf[i], new_buf[i]);
-    printf("new_buf_size = %d\n", new_buf_size+1);
 
 
     unsigned char ua_buf[5];
@@ -340,7 +341,6 @@ int llwrite(int fd, const unsigned char *payload, int payloadSize)
 
         if (bytes && ua_buf[0] == 0x7E && ua_buf[1] == 0x03 ) {
             alarm(0);    
-            printf("UA received\n");
             tramaTr = (tramaTr+1) % 2;
             STOP = TRUE;
         }
@@ -377,15 +377,18 @@ int llread(int fd, unsigned char *packet)
         unsigned char byte;
         int p = 0;
         int read_success = 0;
+        int its_disc = 0;
         
         int c_b;
 
         while(!startOver && !stop){ 
             if(read(fd, &byte, 1)>0 || read_success){
+
                 switch (currentState)
                 {
                 case START:
                     if(byte==0x7E){
+
                         buf[i] = byte;
                         i++;
                         currentState = FLAG_RCV;
@@ -422,9 +425,15 @@ int llread(int fd, unsigned char *packet)
                         currentState = CP_RCV;
                         break;
                     }
-                    if(buf[i]==0x03){
+                    if(byte==0x03 ){
                         c_b = byte;
                         currentState = C_RCV;
+                        break;
+                    }
+                    if(byte==0x0B){
+                        c_b = byte;
+                        currentState = C_RCV;
+                        its_disc = 1;
                         break;
                     }
                     if(byte==0x7E){
@@ -445,6 +454,7 @@ int llread(int fd, unsigned char *packet)
                         buf[i] = byte;
                         i++;
                         currentState = BCC1_OK;
+                        read_success = 1;
                         break;
                     }
                     if(byte == 0x7E){
@@ -460,17 +470,18 @@ int llread(int fd, unsigned char *packet)
                     break; 
 
                 case BCC1_OK:
-                if(buf[i]==0x7E){
-                    currentState = STOP_MACHINE_UA;
+                    if(byte==0x7E){
+                        if(its_disc == 1) currentState = STOP_MACHINE_DISC;
+                        else currentState = STOP_MACHINE;
+                        break;
+                    } 
+                    else{
+                        currentState = START;
+                        startOver = 1;
+                    }
                     break;
-                } 
-                else{
-                    currentState = START;
-                    startOver = 1;
-                }
-                break;
 
-                case CP_RCV:
+                case CP_RCV: 
                     
                     if(byte == buf[1] ^ c_b){
                         buf[i] = byte;
@@ -542,21 +553,26 @@ int llread(int fd, unsigned char *packet)
                     break;
                 
                 case STOP_MACHINE:
-
-
-                    sendUA(fd,0x03,c_b);    
+                    sendUA(fd,0x03,RR(tramaTr)); 
+                    printf("tramaTr: %02x\n", RR(tramaTr));   
                     read_success = 0;
                     stop = 1;
                     STOP = TRUE;
                     break;
                 
                 case STOP_MACHINE_UA:
-
-                    sendUA(fd,0x03,c_b);
+                    sendUA(fd,0x03,c_b); //send ua 
                     read_success = 0;
                     stop = 1;
                     STOP = TRUE;
                     break;
+
+                case STOP_MACHINE_DISC:
+                sendUA(fd,0x01,c_b); //send disc
+                read_success = 0;
+                stop = 1;
+                STOP = TRUE;
+                break;
 
             
                 }
@@ -578,10 +594,54 @@ int llread(int fd, unsigned char *packet)
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int showStatistics)
+int llclose(int fd, int showStatistics)
 {
-    // TODO
+    enum States currentState = START;
+    // mandar disc
+    sendUA(fd,0x03,0x0B); //meter define disc
+    alarm(3);
 
-    return 1;
+    // receber disc
+    alarmEnabled = FALSE;
+    unsigned char byte;
+    int  stop = 0;
+
+    while (alarmEnabled == FALSE && stop == 0) {
+            if (read(fd, &byte, 1) > 0) {
+                switch (currentState) {
+                    case START:
+                        if (byte == FLAG) currentState = FLAG_RCV;
+                        break;
+                    case FLAG_RCV:
+                        if (byte == 0x01) currentState = A_RCV;
+                        else if (byte != FLAG) currentState = START;
+                        break;
+                    case A_RCV:
+                        if (byte == 0x0B) currentState = C_RCV;
+                        else if (byte == FLAG) currentState = FLAG_RCV;
+                        else currentState = START;
+                        break;
+                    case C_RCV:
+                        if (byte == (0x01 ^ 0x0B)) currentState = BCC1_OK;
+                        else if (byte == FLAG) currentState = FLAG_RCV;
+                        else currentState = START;
+                        break;
+                    case BCC1_OK:
+                        if (byte == FLAG) stop = 1;
+                        else currentState = START;
+                        break;
+                    default: 
+                        break;
+                }
+            }
+        } 
+
+    // mandar ua_disc
+    if (stop != 1) return -1;
+    sendUA(fd, 0x03, 0x07);
+    alarm(0);
+    return close(fd);
+    
+    
 }
 
