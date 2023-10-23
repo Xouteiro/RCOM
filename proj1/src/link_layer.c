@@ -9,6 +9,7 @@
 #define TRUE 1
 #define Byte_C(Ns) (Ns << 6)
 #define RR(Nr) ((Nr << 7) | 0x05)
+#define REJECT(Nr) ((Nr << 7) | 0x01)
 #define BUF_SIZE 5
 #define FLAG 0x7E
 
@@ -467,7 +468,7 @@ int llread(int fd, unsigned char* packet) {
                             startOver = 1;
                             i = 0;
                             read_success = 0;
-                            //TODO send reject
+                            sendUA(fd, 0x03, REJECT(tramaTr)); //send reject
                         }
                         break;
 
