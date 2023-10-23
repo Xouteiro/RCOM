@@ -12,8 +12,7 @@
 #define BUF_SIZE 5
 #define FLAG 0x7E
 
-enum States
-{
+enum States {
     START,
     FLAG_RCV,
     A_RCV,
@@ -50,13 +49,13 @@ int sendUA(int fd, unsigned char A, unsigned char C) {
     return write(fd, UA, 5);
 }
 
-unsigned char buildBCC2(const unsigned char *payload, int n) {
+unsigned char buildBCC2(const unsigned char* payload, int n) {
     unsigned char bcc2 = payload[0];
     for (int i = 1; i < n; i++) bcc2 = bcc2 ^ payload[i];
     return bcc2;
 }
 
-int stuffing(unsigned char *buf, unsigned char *new_buf, int n) {
+int stuffing(unsigned char* buf, unsigned char* new_buf, int n) {
     int index = 1;
     new_buf[0] = buf[0];
     for (int i = 1; i < n; i++) {
@@ -78,7 +77,7 @@ int stuffing(unsigned char *buf, unsigned char *new_buf, int n) {
     return index;
 }
 
-int destuffing(unsigned char *buf, unsigned char *destuf_buf, int n) {
+int destuffing(unsigned char* buf, unsigned char* destuf_buf, int n) {
     int index = 0;
     int final_lenght = 1;
 
@@ -100,7 +99,7 @@ int destuffing(unsigned char *buf, unsigned char *destuf_buf, int n) {
     return final_lenght;
 }
 
-int connect(const char *serialPort) {
+int connect(const char* serialPort) {
     int fd;
     if((fd = open(serialPort, O_RDWR | O_NOCTTY)) < 0) {
         perror(serialPort);
@@ -139,7 +138,7 @@ int connect(const char *serialPort) {
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters) {
     int fd;
-    if((fd = connect(connectionParameters.serialPort)) < 0){
+    if((fd = connect(connectionParameters.serialPort)) < 0) {
         perror("Connection error\n");
         return -1;
     }
@@ -242,6 +241,9 @@ int llopen(LinkLayer connectionParameters) {
                             stop = 1;
                             STOP = TRUE;
                             break;
+
+                        default:
+                            break;
                     }
                 }
             }
@@ -264,7 +266,7 @@ int llopen(LinkLayer connectionParameters) {
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
-int llwrite(int fd, const unsigned char *payload, int payloadSize) {
+int llwrite(int fd, const unsigned char* payload, int payloadSize) {
     unsigned char new_buf[2 * payloadSize];
     unsigned char buf[payloadSize + 5];
     buf[0] = 0x7E;
@@ -315,7 +317,7 @@ int llwrite(int fd, const unsigned char *payload, int payloadSize) {
 ////////////////////////////////////////////////
 // LLREAD
 ////////////////////////////////////////////////
-int llread(int fd, unsigned char *packet) {
+int llread(int fd, unsigned char* packet) {
     unsigned char buf[1050];
     unsigned char destuffed_payload[1000];
     STOP = FALSE;
@@ -519,7 +521,7 @@ int llread(int fd, unsigned char *packet) {
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int fd, int showStatistics){
+int llclose(int fd, int showStatistics) {
     enum States currentState = START;
 
     // mandar disc
