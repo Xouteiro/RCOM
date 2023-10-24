@@ -133,7 +133,12 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             printf("Exit: error in end packet\n");
             exit(-1);
         }
-        llclose(fd, 0);
+        
+        if(llclose(fd, 0) == -1){
+            printf("Exit: error in llclose\n");
+            exit(-1);
+        };
+        printf("llclose done\n");
         break;
     }
 
