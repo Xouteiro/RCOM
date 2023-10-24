@@ -85,98 +85,102 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
         perror("Connection error\n");
         exit(-1);
     }
+    printf("llopen done\n");
 
     switch (linkLayer.role) {
-    case LlTx: {
-        FILE *file = fopen(filename, "rb");
-        if (file == NULL) {
-            perror("File not found\n");
-            exit(-1);
-        }
-
-        int prev = ftell(file);
-        fseek(file, 0L, SEEK_END);
-        long int fileSize = ftell(file) - prev;
-        fseek(file, prev, SEEK_SET);
-
-        printf("File size: %ld\n", fileSize);
-        unsigned int cpSize;
-        unsigned char* controlPacketStart = getControlPacket(2, filename, fileSize, &cpSize);
-        if (llwrite(fd, controlPacketStart, cpSize) == -1) {
-            printf("Exit: error in start packet\n");
-            exit(-1);
-        }
-
-        unsigned char sequence = 0;
-        unsigned char* content = getData(file, fileSize);
-        long int bytesLeft = fileSize;
-
-        while (bytesLeft >= 0) {
-            int dataSize = bytesLeft > (long int)MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : bytesLeft;
-            unsigned char* data = (unsigned char* )malloc(dataSize);
-            memcpy(data, content, dataSize);
-
-            int packetSize;
-            unsigned char* packet = getDataPacket(sequence, data, dataSize, &packetSize);
-            if (llwrite(fd, packet, packetSize) == -1) {
-                printf("Exit: error in data packets\n");
+        case LlTx: {
+            FILE *file = fopen(filename, "rb");
+            if (file == NULL) {
+                perror("File not found\n");
                 exit(-1);
             }
 
-            bytesLeft -= (long int)MAX_PAYLOAD_SIZE;
-            content += dataSize;
-            sequence = (sequence + 1) % 255;
+            int prev = ftell(file);
+            fseek(file, 0L, SEEK_END);
+            long int fileSize = ftell(file) - prev;
+            fseek(file, prev, SEEK_SET);
+
+            printf("File size: %ld\n", fileSize);
+            unsigned int cpSize;
+            unsigned char* controlPacketStart = getControlPacket(2, filename, fileSize, &cpSize);
+            if (llwrite(fd, controlPacketStart, cpSize) == -1) { // send start packet
+                printf("Exit: error in start packet\n");
+                exit(-1);
+            }
+            printf("Start packet sent\n");
+
+            unsigned char sequence = 0;
+            unsigned char* content = getData(file, fileSize);
+            long int bytesLeft = fileSize;
+
+            while (bytesLeft >= 0) {
+                int dataSize = bytesLeft > (long int)MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : bytesLeft;
+                unsigned char* data = (unsigned char* )malloc(dataSize);
+                memcpy(data, content, dataSize);
+
+                int packetSize;
+                unsigned char* packet = getDataPacket(sequence, data, dataSize, &packetSize);
+                if (llwrite(fd, packet, packetSize) == -1) { // send data packet
+                    printf("Exit: error in data packets\n");
+                    exit(-1);
+                }
+
+                bytesLeft -= (long int)MAX_PAYLOAD_SIZE;
+                content += dataSize;
+                sequence = (sequence + 1) % 255;
+            }
+            printf("File sent!\n");
+
+            unsigned char* controlPacketEnd = getControlPacket(3, filename, fileSize, &cpSize);
+            if (llwrite(fd, controlPacketEnd, cpSize) == -1) { // send disconnect packet
+                printf("Exit: error in end packet\n");
+                exit(-1);
+            }
+
+            if(llclose(fd, 0) == -1){
+                printf("Exit: error in llclose\n");
+                exit(-1);
+            };
+            printf("Disconnecting\n");
+            break;
         }
 
-        unsigned char* controlPacketEnd = getControlPacket(3, filename, fileSize, &cpSize);
-        if (llwrite(fd, controlPacketEnd, cpSize) == -1) {
-            printf("Exit: error in end packet\n");
-            exit(-1);
+        case LlRx: {
+            unsigned char* packet = (unsigned char* )malloc(MAX_PAYLOAD_SIZE);
+            int packetSize = -1;
+            while ((packetSize = llread(fd, packet)) < 0); // wait for start packet
+            printf("Start packet received\n");
+            int nameSize = 0;
+            parseControlPacket(packet, packetSize, &nameSize);
+
+            FILE *newFile = fopen((char* )"penguin-received.gif", "wb+");
+            if (newFile == NULL) {
+                perror("File not found\n");
+                exit(-1);
+            }
+            while (1) {
+                packetSize = -1;
+                while ((packetSize = llread(fd, packet)) < 0); // wait for data packet
+                if (!packetSize) break;
+                else if (packet[0] != 3) {
+                    unsigned char* buffer = (unsigned char* )malloc(packetSize);
+                    parseDataPacket(packet, packetSize, buffer);
+                    fwrite(buffer, sizeof(unsigned char), packetSize - 5, newFile);
+                    free(buffer);
+                }
+                else break;
+            }
+            printf("File received!\n");
+
+            fclose(newFile);
+            int disc = -1;
+            while ((disc = llread(fd, packet)) < 0); // wait for disconnect packet
+            printf("Disconnecting\n");
+            break;
         }
         
-        if(llclose(fd, 0) == -1){
-            printf("Exit: error in llclose\n");
+        default:
             exit(-1);
-        };
-        printf("llclose done\n");
-        break;
-    }
-
-    case LlRx: {
-        unsigned char* packet = (unsigned char* )malloc(MAX_PAYLOAD_SIZE);
-        int packetSize = -1;
-        while ((packetSize = llread(fd, packet)) < 0);
-        int nameSize = 0;
-        parseControlPacket(packet, packetSize, &nameSize);
-
-        FILE *newFile = fopen((char* )"penguin-received.gif", "wb+");
-        if (newFile == NULL) {
-            perror("File not found\n");
-            exit(-1);
+            break;
         }
-        while (1) {
-            packetSize = -1;
-            while ((packetSize = llread(fd, packet)) < 0);
-            if (!packetSize) break;
-            else if (packet[0] != 3) {
-                unsigned char* buffer = (unsigned char* )malloc(packetSize);
-                parseDataPacket(packet, packetSize, buffer);
-                fwrite(buffer, sizeof(unsigned char), packetSize - 5, newFile);
-                free(buffer);
-            }
-            else break;
-        }
-
-        fclose(newFile);
-        printf("File closed\n");
-        int disc = -1;
-        while ((disc = llread(fd, packet)) < 0);
-
-        break;
-    }
-    
-    default:
-        exit(-1);
-        break;
-    }
 }

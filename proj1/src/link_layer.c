@@ -39,6 +39,8 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 int tramaTr = 0;
 int tramaRc = 1;
+int timeout;
+int nRetransmissions;
 
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
@@ -48,7 +50,7 @@ void alarmHandler(int signal) {
 
 void sendFrame(int fd, unsigned char *buf, int n) {
     write(fd, buf, n);
-    alarm(3);
+    alarm(timeout);
 }
 
 int sendSup(int fd, unsigned char A, unsigned char C) {
@@ -106,7 +108,7 @@ int destuffing(unsigned char* buf, unsigned char* destuf_buf, int n) {
     return final_lenght;
 }
 
-int connect(const char* serialPort) {
+int connect(const char* serialPort, int baudRate) {
     int fd;
     if((fd = open(serialPort, O_RDWR | O_NOCTTY)) < 0) {
         perror(serialPort);
@@ -123,7 +125,7 @@ int connect(const char* serialPort) {
 
     memset(&newtio, 0, sizeof(newtio));
 
-    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
+    newtio.c_cflag = baudRate | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
     newtio.c_oflag = 0;
     newtio.c_lflag = 0;
@@ -145,10 +147,13 @@ int connect(const char* serialPort) {
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters) {
     int fd;
-    if((fd = connect(connectionParameters.serialPort)) < 0) {
+    if((fd = connect(connectionParameters.serialPort, connectionParameters.baudRate)) < 0) {
         perror("Connection error\n");
         return -1;
     }
+
+    timeout = connectionParameters.timeout;
+    nRetransmissions = connectionParameters.nRetransmissions;
 
     switch (connectionParameters.role) {
         case LlTx: {
@@ -164,7 +169,7 @@ int llopen(LinkLayer connectionParameters) {
 
             unsigned char received_ua_buf[5];
 
-            while (STOP == FALSE && alarmCount < 4) {
+            while (STOP == FALSE && alarmCount < nRetransmissions) {
                 // Returns after 5 chars have been inputted
                 int bytes = read(fd, received_ua_buf, 5); // receive connection ua
 
@@ -290,17 +295,16 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
 
     unsigned char ua_buf[5];
     STOP = FALSE;
-    while (STOP == FALSE && alarmCount < 5) { //mudar 5 para define
-        int accepted = 0;
+    while (STOP == FALSE && alarmCount < nRetransmissions) {
         int bytes = read(fd, ua_buf, 5);
 
-        if (bytes && ua_buf[0] == 0x7E && (ua_buf[1] == 0x03 || ua_buf[1] == 0x01) && (ua_buf[2] == RR(0) || ua_buf[2] == RR(1)) && ua_buf[3] == ua_buf[1] ^ ua_buf[2] && ua_buf[4] == FLAG ) {
+        if (bytes && ua_buf[0] == FLAG && (ua_buf[1] == A_TR || ua_buf[1] == A_REC) && (ua_buf[2] == RR(0) || ua_buf[2] == RR(1)) && ua_buf[3] == (ua_buf[1] ^ ua_buf[2]) && ua_buf[4] == FLAG ) {
             alarm(0);
             tramaTr = (tramaTr + 1) % 2;
             STOP = TRUE;
         }
 
-        else if(bytes && ua_buf[0] == 0x7E && (ua_buf[1] == 0x03 || ua_buf[1] == 0x01) && (ua_buf[2] == REJECT(0) || ua_buf[2] == REJECT(1)) && ua_buf[3] == ua_buf[1] ^ ua_buf[2] && ua_buf[4] == FLAG ){
+        else if(bytes && ua_buf[0] == FLAG && (ua_buf[1] == A_TR || ua_buf[1] == A_REC) && (ua_buf[2] == REJECT(0) || ua_buf[2] == REJECT(1)) && ua_buf[3] == (ua_buf[1] ^ ua_buf[2]) && ua_buf[4] == FLAG ){
             alarm(0);
             sendFrame(fd, new_buf, new_buf_size + 1);            
         }
@@ -313,8 +317,9 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
         }
     }
 
-    if(alarmCount >= 5) { //mudar aqui tambem
+    if(alarmCount >= nRetransmissions) {
         perror("Alarm count exceeded\n");
+        llclose(fd, 0);
         return -1;
     }
 
@@ -534,7 +539,7 @@ int llclose(int fd, int showStatistics) {
     disc_buf[3] = disc_buf[1] ^ disc_buf[2];
     disc_buf[4] = FLAG;
 
-    sendFrame(fd, disc_buf, 5); // senf connection set
+    sendFrame(fd, disc_buf, 5); // send connection set
 
     // receber disc
     unsigned char byte;
