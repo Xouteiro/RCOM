@@ -159,13 +159,13 @@ int llopen(LinkLayer connectionParameters) {
             set_buf[3] = set_buf[1] ^ set_buf[2];
             set_buf[4] = FLAG;
 
-            sendFrame(fd, set_buf, 5); // senf connection set
+            sendFrame(fd, set_buf, 5); // send connection set
 
             unsigned char received_ua_buf[5];
 
             while (STOP == FALSE && alarmCount < 4) {
                 // Returns after 5 chars have been inputted
-                int bytes = read(fd, received_ua_buf, 5);
+                int bytes = read(fd, received_ua_buf, 5); // receive connection ua
 
                 if (bytes && received_ua_buf[0] == FLAG && received_ua_buf[1] == A_TR
                 && received_ua_buf[2] == C_UA && received_ua_buf[3] == (received_ua_buf[1] ^ received_ua_buf[2])
@@ -190,7 +190,7 @@ int llopen(LinkLayer connectionParameters) {
 
             while (STOP == FALSE) {
                 // Returns after 5 chars have been input
-                int bytes = read(fd, received_buf, 5);
+                int bytes = read(fd, received_buf, 5); // receive connection set
 
                 int startOver = 0;
                 int stop = 0;
@@ -515,17 +515,23 @@ int llread(int fd, unsigned char* packet) {
 ////////////////////////////////////////////////
 int llclose(int fd, int showStatistics) {
     enum States currentState = START;
-
+    (void)signal(SIGALRM, alarmHandler);
+    
     // mandar disc
-    sendSup(fd, 0x03, 0x0B); // meter define disc
-    alarm(3);
+    unsigned char disc_buf[5];
+    disc_buf[0] = FLAG;
+    disc_buf[1] = A_TR;
+    disc_buf[2] = C_DISC;
+    disc_buf[3] = disc_buf[1] ^ disc_buf[2];
+    disc_buf[4] = FLAG;
+
+    sendFrame(fd, disc_buf, 5); // senf connection set
 
     // receber disc
-    alarmEnabled = FALSE;
     unsigned char byte;
     int stop = 0;
 
-    while (alarmEnabled == FALSE && stop == 0) {
+    while (stop == 0) {
         if (read(fd, &byte, 1)) {
             switch (currentState) {
                 case START:
@@ -533,18 +539,18 @@ int llclose(int fd, int showStatistics) {
                     break;
 
                 case FLAG_RCV:
-                    if (byte == 0x01) currentState = A_RCV;
+                    if (byte == A_REC) currentState = A_RCV;
                     else if (byte != FLAG) currentState = START;
                     break;
 
                 case A_RCV:
-                    if (byte == 0x0B) currentState = C_RCV;
+                    if (byte == C_DISC) currentState = C_RCV;
                     else if (byte == FLAG) currentState = FLAG_RCV;
                     else currentState = START;
                     break;
 
                 case C_RCV:
-                    if (byte == (0x01 ^ 0x0B)) currentState = BCC1_OK;
+                    if (byte == (A_REC ^ C_DISC)) currentState = BCC1_OK;
                     else if (byte == FLAG) currentState = FLAG_RCV;
                     else currentState = START;
                     break;
@@ -562,8 +568,7 @@ int llclose(int fd, int showStatistics) {
 
     // mandar ua_disc
     if (stop != 1) return -1;
-
-    sendSup(fd, 0x03, 0x07);
+    sendSup(fd, A_TR, C_UA);
     alarm(0);
     return close(fd);
 }
