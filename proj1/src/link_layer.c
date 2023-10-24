@@ -12,6 +12,11 @@
 #define REJECT(Nr) ((Nr << 7) | 0x01)
 #define BUF_SIZE 5
 #define FLAG 0x7E
+#define A_TR 0x03
+#define A_REC 0x01
+#define C_SET 0x03
+#define C_UA 0x07
+#define C_DISC 0x0B
 
 enum States {
     START,
@@ -148,11 +153,11 @@ int llopen(LinkLayer connectionParameters) {
         case LlTx: {
             (void)signal(SIGALRM, alarmHandler);
             unsigned char set_buf[5];
-            set_buf[0] = 0x7E;
-            set_buf[1] = 0x03;
-            set_buf[2] = 0x03;
+            set_buf[0] = FLAG;
+            set_buf[1] = A_TR;
+            set_buf[2] = C_SET;
             set_buf[3] = set_buf[1] ^ set_buf[2];
-            set_buf[4] = 0x7E;
+            set_buf[4] = FLAG;
 
             sendFrame(fd, set_buf, 5);
 
@@ -162,9 +167,9 @@ int llopen(LinkLayer connectionParameters) {
                 // Returns after 5 chars have been inputted
                 int bytes = read(fd, received_ua_buf, 5);
 
-                if (bytes && received_ua_buf[0] == 0x7E && /*received_ua_buf[1] == 0x03
-                && received_ua_buf[2] == 0x07 && received_ua_buf[3] == received_ua_buf[1] ^ received_ua_buf[2]
-                &&*/ received_ua_buf[4] == 0x7E) {
+                if (bytes && received_ua_buf[0] == FLAG && received_ua_buf[1] == A_TR
+                && received_ua_buf[2] == C_UA && received_ua_buf[3] == received_ua_buf[1] ^ received_ua_buf[2]
+                && received_ua_buf[4] == FLAG) {
                     alarm(0);
                     STOP = TRUE;
                 }
@@ -193,13 +198,13 @@ int llopen(LinkLayer connectionParameters) {
                 for (int i = 0; i < bytes && !startOver && !stop; i++) {
                     switch (currentState) {
                         case START:
-                            if (received_buf[i] == 0x7E) currentState = FLAG_RCV;
+                            if (received_buf[i] == FLAG) currentState = FLAG_RCV;
                             else startOver = 1;
                             break;
 
                         case FLAG_RCV:
-                            if (received_buf[i] == 0x03) currentState = A_RCV;
-                            else if (received_buf[i] == 0x7E) startOver = 1;
+                            if (received_buf[i] == A_TR) currentState = A_RCV;
+                            else if (received_buf[i] == FLAG) startOver = 1;
                             else {
                                 currentState = START;
                                 startOver = 1;
@@ -207,8 +212,8 @@ int llopen(LinkLayer connectionParameters) {
                             break;
 
                         case A_RCV:
-                            if (received_buf[i] == 0x03) currentState = C_RCV;
-                            else if (received_buf[i] == 0x7E) {
+                            if (received_buf[i] == A_TR) currentState = C_RCV;
+                            else if (received_buf[i] == FLAG) {
                                 startOver = 1;
                                 currentState = FLAG_RCV;
                             }
@@ -220,7 +225,7 @@ int llopen(LinkLayer connectionParameters) {
 
                         case C_RCV:
                             if (received_buf[i] == (received_buf[1] ^ received_buf[2])) currentState = BCC_OK;
-                            else if (received_buf[i] == 0x7E) {
+                            else if (received_buf[i] == FLAG) {
                                 startOver = 1;
                                 currentState = FLAG_RCV;
                             }
@@ -231,7 +236,7 @@ int llopen(LinkLayer connectionParameters) {
                             break;
 
                         case BCC_OK:
-                            if (received_buf[i] == 0x7E) currentState = STOP_MACHINE;
+                            if (received_buf[i] == FLAG) currentState = STOP_MACHINE;
                             else {
                                 currentState = START;
                                 startOver = 1;
@@ -250,11 +255,11 @@ int llopen(LinkLayer connectionParameters) {
             }
 
             unsigned char ua_buf[5];
-            ua_buf[0] = 0x7E;
-            ua_buf[1] = 0x03;
-            ua_buf[2] = 0x07;
+            ua_buf[0] = FLAG;
+            ua_buf[1] = A_TR;
+            ua_buf[2] = C_UA;
             ua_buf[3] = ua_buf[1] ^ ua_buf[2];
-            ua_buf[4] = 0x7E;
+            ua_buf[4] = FLAG;
 
             write(fd, ua_buf, 5);
             break;
