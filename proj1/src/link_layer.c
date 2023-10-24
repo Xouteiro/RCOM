@@ -7,7 +7,7 @@
 
 #define FALSE 0
 #define TRUE 1
-#define Byte_C(Ns) (Ns << 6)
+#define FRAME_CONTROL(Ns) (Ns << 6)
 #define RR(Nr) ((Nr << 7) | 0x05)
 #define REJECT(Nr) ((Nr << 7) | 0x01)
 #define BUF_SIZE 5
@@ -31,7 +31,6 @@ enum States {
     CHECK_BCC2,
     BCC2_OK,
     STOP_MACHINE,
-    STOP_MACHINE_UA,
     STOP_MACHINE_DISC
 };
 
@@ -51,7 +50,7 @@ void sendFrame(int fd, unsigned char *buf, int n) {
     alarm(3);
 }
 
-int sendUA(int fd, unsigned char A, unsigned char C) {
+int sendSup(int fd, unsigned char A, unsigned char C) {
     unsigned char UA[5] = {FLAG, A, C, A ^ C, FLAG};
     return write(fd, UA, 5);
 }
@@ -160,7 +159,7 @@ int llopen(LinkLayer connectionParameters) {
             set_buf[3] = set_buf[1] ^ set_buf[2];
             set_buf[4] = FLAG;
 
-            sendFrame(fd, set_buf, 5);
+            sendFrame(fd, set_buf, 5); // senf connection set
 
             unsigned char received_ua_buf[5];
 
@@ -169,7 +168,7 @@ int llopen(LinkLayer connectionParameters) {
                 int bytes = read(fd, received_ua_buf, 5);
 
                 if (bytes && received_ua_buf[0] == FLAG && received_ua_buf[1] == A_TR
-                && received_ua_buf[2] == C_UA && received_ua_buf[3] == received_ua_buf[1] ^ received_ua_buf[2]
+                && received_ua_buf[2] == C_UA && received_ua_buf[3] == (received_ua_buf[1] ^ received_ua_buf[2])
                 && received_ua_buf[4] == FLAG) {
                     alarm(0);
                     STOP = TRUE;
@@ -255,14 +254,7 @@ int llopen(LinkLayer connectionParameters) {
                 }
             }
 
-            unsigned char ua_buf[5];
-            ua_buf[0] = FLAG;
-            ua_buf[1] = A_TR;
-            ua_buf[2] = C_UA;
-            ua_buf[3] = ua_buf[1] ^ ua_buf[2];
-            ua_buf[4] = FLAG;
-
-            write(fd, ua_buf, 5);
+            sendSup(fd, A_TR, C_UA); // send connection ua
             break;
         }
     }
@@ -278,7 +270,7 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
     unsigned char buf[payloadSize + 5];
     buf[0] = FLAG;
     buf[1] = A_TR;
-    buf[2] = Byte_C(tramaTr);
+    buf[2] = FRAME_CONTROL(tramaTr);
     printf("buf2: %02x\n", buf[2]);
     buf[3] = buf[1] ^ buf[2];
     long pos = 4;
@@ -346,7 +338,7 @@ int llread(int fd, unsigned char* packet) {
             if (read(fd, &byte, 1) || read_success) {
                 switch (currentState) {
                     case START:
-                        if (byte == 0x7E) {
+                        if (byte == FLAG) {
                             buf[i] = byte;
                             i++;
                             currentState = FLAG_RCV;
@@ -358,12 +350,12 @@ int llread(int fd, unsigned char* packet) {
                         break;
 
                     case FLAG_RCV:
-                        if (byte == 0x03) {
+                        if (byte == A_TR) {
                             buf[i] = byte;
                             i++;
                             currentState = A_RCV;
                         }
-                        else if (byte == 0x7E) {
+                        else if (byte == FLAG) {
                             startOver = 1;
                             i = 0;
                         }
@@ -375,22 +367,22 @@ int llread(int fd, unsigned char* packet) {
                         break;
 
                     case A_RCV:
-                        if (byte == 0x00 || byte == 0x40) {
+                        if (byte == 0x00 || byte == 0x40) { // control package
                             buf[i] = byte;
                             c_b = byte;
                             i++;
                             currentState = CP_RCV;
                         }
-                        else if (byte == 0x03) {
+                        else if (byte == C_SET) { // regular set
                             c_b = byte;
                             currentState = C_RCV;
                         }
-                        else if (byte == 0x0B) {
+                        else if (byte == C_DISC) { // disconnect
                             c_b = byte;
                             currentState = C_RCV;
                             its_disc = 1;
                         }
-                        else if (byte == 0x7E) {
+                        else if (byte == FLAG) {
                             startOver = 1;
                             i = 0;
                             currentState = FLAG_RCV;
@@ -409,7 +401,7 @@ int llread(int fd, unsigned char* packet) {
                             currentState = BCC1_OK;
                             read_success = 1;
                         }
-                        else if (byte == 0x7E) {
+                        else if (byte == FLAG) {
                             startOver = 1;
                             i = 0;
                             currentState = FLAG_RCV;
@@ -422,7 +414,7 @@ int llread(int fd, unsigned char* packet) {
                         break;
 
                     case BCC1_OK:
-                        if (byte == 0x7E) {
+                        if (byte == FLAG) {
                             if (its_disc) currentState = STOP_MACHINE_DISC;
                             else currentState = STOP_MACHINE;
                         }
@@ -438,7 +430,7 @@ int llread(int fd, unsigned char* packet) {
                             i++;
                             currentState = PAYLOAD;
                         }
-                        else if (byte == 0x7E) {
+                        else if (byte == FLAG) {
                             startOver = 1;
                             i = 0;
                             currentState = FLAG_RCV;
@@ -451,7 +443,7 @@ int llread(int fd, unsigned char* packet) {
                         break;
 
                     case PAYLOAD:
-                        if (byte == 0x7E) {
+                        if (byte == FLAG) {
                             buf[i] = byte;
                             read_success = 1;
                             currentState = CHECK_BCC2;
@@ -474,12 +466,12 @@ int llread(int fd, unsigned char* packet) {
                             startOver = 1;
                             i = 0;
                             read_success = 0;
-                            sendUA(fd, 0x01, REJECT(tramaTr)); //send reject
+                            sendSup(fd, A_REC, REJECT(tramaTr)); //send reject
                         }
                         break;
 
                     case BCC2_OK:
-                        if (byte == 0x7E) {
+                        if (byte == FLAG) {
                             buf[i] = byte;
                             i++;
                             currentState = STOP_MACHINE;
@@ -492,22 +484,15 @@ int llread(int fd, unsigned char* packet) {
                         break;
 
                     case STOP_MACHINE:
-                        sendUA(fd, 0x03, RR(tramaTr));
+                        sendSup(fd, A_TR, RR(tramaTr)); // send rr
                         printf("tramaTr: %02x\n", RR(tramaTr));
                         read_success = 0;
                         stop = 1;
                         STOP = TRUE;
                         break;
 
-                    case STOP_MACHINE_UA:
-                        sendUA(fd, 0x03, c_b); // send ua
-                        read_success = 0;
-                        stop = 1;
-                        STOP = TRUE;
-                        break;
-
                     case STOP_MACHINE_DISC:
-                        sendUA(fd, 0x01, c_b); // send disc
+                        sendSup(fd, A_REC, c_b); // send disc
                         read_success = 0;
                         stop = 1;
                         STOP = TRUE;
@@ -532,7 +517,7 @@ int llclose(int fd, int showStatistics) {
     enum States currentState = START;
 
     // mandar disc
-    sendUA(fd, 0x03, 0x0B); // meter define disc
+    sendSup(fd, 0x03, 0x0B); // meter define disc
     alarm(3);
 
     // receber disc
@@ -578,7 +563,7 @@ int llclose(int fd, int showStatistics) {
     // mandar ua_disc
     if (stop != 1) return -1;
 
-    sendUA(fd, 0x03, 0x07);
+    sendSup(fd, 0x03, 0x07);
     alarm(0);
     return close(fd);
 }
