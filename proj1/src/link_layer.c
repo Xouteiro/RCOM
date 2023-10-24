@@ -38,6 +38,7 @@ volatile int STOP = FALSE;
 int alarmEnabled = FALSE;
 int alarmCount = 0;
 int tramaTr = 0;
+int tramaRc = 1;
 
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
@@ -271,7 +272,6 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
     buf[0] = FLAG;
     buf[1] = A_TR;
     buf[2] = FRAME_CONTROL(tramaTr);
-    printf("buf2: %02x\n", buf[2]);
     buf[3] = buf[1] ^ buf[2];
     long pos = 4;
 
@@ -290,14 +290,21 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
 
     unsigned char ua_buf[5];
     STOP = FALSE;
-    while (STOP == FALSE && alarmCount < 4) {
+    while (STOP == FALSE && alarmCount < 5) { //mudar 5 para define
+        int accepted = 0;
         int bytes = read(fd, ua_buf, 5);
 
-        if (bytes && ua_buf[0] == FLAG && ua_buf[1] == A_TR) {
+        if (bytes && ua_buf[0] == 0x7E && (ua_buf[1] == 0x03 || ua_buf[1] == 0x01) && (ua_buf[2] == RR(0) || ua_buf[2] == RR(1)) && ua_buf[3] == ua_buf[1] ^ ua_buf[2] && ua_buf[4] == FLAG ) {
             alarm(0);
             tramaTr = (tramaTr + 1) % 2;
             STOP = TRUE;
         }
+
+        else if(bytes && ua_buf[0] == 0x7E && (ua_buf[1] == 0x03 || ua_buf[1] == 0x01) && (ua_buf[2] == REJECT(0) || ua_buf[2] == REJECT(1)) && ua_buf[3] == ua_buf[1] ^ ua_buf[2] && ua_buf[4] == FLAG ){
+            alarm(0);
+            sendFrame(fd, new_buf, new_buf_size + 1);            
+        }
+
         else {
             if (alarmEnabled == FALSE) {
                 sendFrame(fd, new_buf, new_buf_size + 1);
@@ -306,11 +313,12 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
         }
     }
 
-    if(alarmCount >= 4) {
+    if(alarmCount >= 5) { //mudar aqui tambem
         perror("Alarm count exceeded\n");
         return -1;
     }
-    return 0;
+
+    return new_buf_size + 1;
 }
 
 ////////////////////////////////////////////////
@@ -460,13 +468,14 @@ int llread(int fd, unsigned char* packet) {
                         destuf_size = destuffing(stuffed_payload, destuffed_payload, p);
                         int bcc2 = buildBCC2(destuffed_payload, destuf_size - 1);
 
-                        if (bcc2 == destuffed_payload[destuf_size - 1]) currentState = BCC2_OK;
+                        if (bcc2 == destuffed_payload[destuf_size-1]) currentState = BCC2_OK;
                         else {
-                            currentState = START;
-                            startOver = 1;
                             i = 0;
                             read_success = 0;
-                            sendSup(fd, A_REC, REJECT(tramaTr)); //send reject
+                            stop = 1;
+                            STOP = TRUE;
+                            printf("Packet reject. Retransmiting");
+                            sendSup(fd, A_REC, REJECT(tramaRc)); //send reject
                         }
                         break;
 
@@ -484,8 +493,8 @@ int llread(int fd, unsigned char* packet) {
                         break;
 
                     case STOP_MACHINE:
-                        sendSup(fd, A_TR, RR(tramaTr)); // send rr
-                        printf("tramaTr: %02x\n", RR(tramaTr));
+                        sendSup(fd, A_TR, RR(tramaRc)); // send rr
+                        tramaRc = (tramaRc + 1)%2;
                         read_success = 0;
                         stop = 1;
                         STOP = TRUE;

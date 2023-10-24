@@ -85,13 +85,10 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
         perror("Connection error\n");
         exit(-1);
     }
-    printf("llopen done\n");
 
     switch (linkLayer.role) {
     case LlTx: {
         FILE *file = fopen(filename, "rb");
-        printf("file: %p\n", file);
-        printf("filename: %s\n", filename);
         if (file == NULL) {
             perror("File not found\n");
             exit(-1);
@@ -115,15 +112,12 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
         long int bytesLeft = fileSize;
 
         while (bytesLeft >= 0) {
-            printf("bytesLeft: %ld\n", bytesLeft);
             int dataSize = bytesLeft > (long int)MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : bytesLeft;
             unsigned char* data = (unsigned char* )malloc(dataSize);
             memcpy(data, content, dataSize);
-            printf("Data size: %d\n", dataSize);
 
             int packetSize;
             unsigned char* packet = getDataPacket(sequence, data, dataSize, &packetSize);
-            printf("Packet size: %d\n", packetSize);
             if (llwrite(fd, packet, packetSize) == -1) {
                 printf("Exit: error in data packets\n");
                 exit(-1);
