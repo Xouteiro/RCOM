@@ -12,7 +12,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <math.h>
-#include <errno.h>
+
 
 unsigned char* parseControlPacket(unsigned char* packet, int size, int* nameSize) {
     unsigned char fileSizeNBytes = packet[6];
@@ -148,6 +148,7 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
         case LlRx: {
             unsigned char* packet = (unsigned char* )malloc(MAX_PAYLOAD_SIZE);
             int packetSize = -1;
+            
             while ((packetSize = llread(fd, packet)) < 0); // wait for start packet
             printf("Start packet received\n");
             int nameSize = 0;
