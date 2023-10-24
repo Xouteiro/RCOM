@@ -17,6 +17,7 @@
 #define C_SET 0x03
 #define C_UA 0x07
 #define C_DISC 0x0B
+#define ESC 0x7D
 
 enum States {
     START,
@@ -65,13 +66,13 @@ int stuffing(unsigned char* buf, unsigned char* new_buf, int n) {
     int index = 1;
     new_buf[0] = buf[0];
     for (int i = 1; i < n; i++) {
-        if (buf[i] == 0x7E) {
-            new_buf[index] = 0x7D;
+        if (buf[i] == FLAG) {
+            new_buf[index] = ESC;
             index++;
             new_buf[index] = 0x5E;
         }
-        else if (buf[i] == 0x7D) {
-            new_buf[index] = 0x7D;
+        else if (buf[i] == ESC) {
+            new_buf[index] = ESC;
             index++;
             new_buf[index] = 0x5D;
         }
@@ -88,12 +89,12 @@ int destuffing(unsigned char* buf, unsigned char* destuf_buf, int n) {
     int final_lenght = 1;
 
     for (int i = 0; i < n; i++) { // usar o n
-        if (buf[i] == 0x7D && buf[i + 1] == 0x5E) {
-            destuf_buf[index] = 0x7E;
+        if (buf[i] == ESC && buf[i + 1] == 0x5E) {
+            destuf_buf[index] = FLAG;
             i++;
         }
-        else if (buf[i] == 0x7D && buf[i + 1] == 0x5D) {
-            destuf_buf[index] = 0x7D;
+        else if (buf[i] == ESC && buf[i + 1] == 0x5D) {
+            destuf_buf[index] = ESC;
             i++;
         }
         else destuf_buf[index] = buf[i];
@@ -275,8 +276,8 @@ int llopen(LinkLayer connectionParameters) {
 int llwrite(int fd, const unsigned char* payload, int payloadSize) {
     unsigned char new_buf[2 * payloadSize];
     unsigned char buf[payloadSize + 5];
-    buf[0] = 0x7E;
-    buf[1] = 0x03;
+    buf[0] = FLAG;
+    buf[1] = A_TR;
     buf[2] = Byte_C(tramaTr);
     printf("buf2: %02x\n", buf[2]);
     buf[3] = buf[1] ^ buf[2];
@@ -290,7 +291,7 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
     // build the bcc2 with the payload
     buf[pos] = buildBCC2(payload, payloadSize);
     pos++;
-    buf[pos] = 0x7E;
+    buf[pos] = FLAG;
 
     int new_buf_size = stuffing(buf, new_buf, pos);
     sendFrame(fd, new_buf, new_buf_size + 1);
@@ -300,7 +301,7 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
     while (STOP == FALSE && alarmCount < 4) {
         int bytes = read(fd, ua_buf, 5);
 
-        if (bytes && ua_buf[0] == 0x7E && ua_buf[1] == 0x03) {
+        if (bytes && ua_buf[0] == FLAG && ua_buf[1] == A_TR) {
             alarm(0);
             tramaTr = (tramaTr + 1) % 2;
             STOP = TRUE;
@@ -473,7 +474,7 @@ int llread(int fd, unsigned char* packet) {
                             startOver = 1;
                             i = 0;
                             read_success = 0;
-                            sendUA(fd, 0x03, REJECT(tramaTr)); //send reject
+                            sendUA(fd, 0x01, REJECT(tramaTr)); //send reject
                         }
                         break;
 
