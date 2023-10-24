@@ -193,8 +193,9 @@ int llopen(LinkLayer connectionParameters) {
             unsigned char received_buf[5];
 
             enum States currentState = START;
+            sleep(4);
 
-            while (STOP == FALSE) {
+            while (STOP == FALSE) { //
                 // Returns after 5 chars have been input
                 int bytes = read(fd, received_buf, 5); // receive connection set
 
@@ -346,9 +347,9 @@ int llread(int fd, unsigned char* packet) {
         int read_success = 0;
         int its_disc = 0;
         int c_b;
-
         while (!startOver && !stop) {
             if (read(fd, &byte, 1) || read_success) {
+                
                 switch (currentState) {
                     case START:
                         if (byte == FLAG) {
@@ -362,7 +363,7 @@ int llread(int fd, unsigned char* packet) {
                         }
                         break;
 
-                    case FLAG_RCV:
+                    case FLAG_RCV:  
                         if (byte == A_TR) {
                             buf[i] = byte;
                             i++;
@@ -370,7 +371,8 @@ int llread(int fd, unsigned char* packet) {
                         }
                         else if (byte == FLAG) {
                             startOver = 1;
-                            i = 0;
+                            i = 1;
+                            
                         }
                         else {
                             currentState = START;
@@ -408,7 +410,7 @@ int llread(int fd, unsigned char* packet) {
                         break;
 
                     case C_RCV:
-                        if (byte == (buf[1] ^ c_b)) {
+                        if (byte == (buf[1] ^ c_b)) {  
                             buf[i] = byte;
                             i++;
                             currentState = BCC1_OK;
@@ -439,6 +441,7 @@ int llread(int fd, unsigned char* packet) {
 
                     case CP_RCV:
                         if (byte == (buf[1] ^ c_b)) {
+
                             buf[i] = byte;
                             i++;
                             currentState = PAYLOAD;
@@ -476,10 +479,10 @@ int llread(int fd, unsigned char* packet) {
                         if (bcc2 == destuffed_payload[destuf_size-1]) currentState = BCC2_OK;
                         else {
                             i = 0;
+                            currentState = START;
                             read_success = 0;
                             stop = 1;
-                            STOP = TRUE;
-                            printf("Packet reject. Retransmiting");
+                            printf("Packet reject. Retransmiting\n");
                             sendSup(fd, A_REC, REJECT(tramaRc)); //send reject
                         }
                         break;
