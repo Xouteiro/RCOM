@@ -307,6 +307,7 @@ int llwrite(int fd, const unsigned char* payload, int payloadSize) {
 
         else if(bytes && ua_buf[0] == FLAG && (ua_buf[1] == A_TR || ua_buf[1] == A_REC) && (ua_buf[2] == REJECT(0) || ua_buf[2] == REJECT(1)) && ua_buf[3] == (ua_buf[1] ^ ua_buf[2]) && ua_buf[4] == FLAG ){
             alarm(0);
+            printf("Trying again\n");
             sendFrame(fd, new_buf, new_buf_size + 1);            
         }
 
