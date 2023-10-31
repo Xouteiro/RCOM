@@ -42,6 +42,9 @@ int tramaRc = 1;
 int timeout;
 int nRetransmissions;
 
+
+
+
 void alarmHandler(int signal) {
     alarmEnabled = FALSE;
     alarmCount++;
@@ -142,6 +145,11 @@ int connect(const char* serialPort, int baudRate) {
     return fd;
 }
 
+
+    struct timeval start_prop_time, end_prop_time;
+
+    double elapsed_2prop_time;
+
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -156,6 +164,7 @@ int llopen(LinkLayer connectionParameters) {
     nRetransmissions = connectionParameters.nRetransmissions;
 
     switch (connectionParameters.role) {
+
         case LlTx: {
             (void)signal(SIGALRM, alarmHandler);
             unsigned char set_buf[5];
@@ -164,7 +173,8 @@ int llopen(LinkLayer connectionParameters) {
             set_buf[2] = C_SET;
             set_buf[3] = set_buf[1] ^ set_buf[2];
             set_buf[4] = FLAG;
-
+            
+            gettimeofday(&start_prop_time, NULL);
             sendFrame(fd, set_buf, 5); // send connection set
 
             unsigned char received_ua_buf[5];
@@ -172,10 +182,12 @@ int llopen(LinkLayer connectionParameters) {
             while (STOP == FALSE && alarmCount < nRetransmissions) {
                 // Returns after 5 chars have been inputted
                 int bytes = read(fd, received_ua_buf, 5); // receive connection ua
+                gettimeofday(&end_prop_time, NULL);
 
                 if (bytes && received_ua_buf[0] == FLAG && received_ua_buf[1] == A_TR
                 && received_ua_buf[2] == C_UA && received_ua_buf[3] == (received_ua_buf[1] ^ received_ua_buf[2])
                 && received_ua_buf[4] == FLAG) {
+                    
                     alarm(0);
                     STOP = TRUE;
                 }
@@ -186,6 +198,12 @@ int llopen(LinkLayer connectionParameters) {
                     }
                 }
             }
+
+
+            elapsed_2prop_time= (end_prop_time.tv_sec - start_prop_time.tv_sec) + 
+                   (end_prop_time.tv_usec - start_prop_time.tv_usec) / 1e6;
+            printf("Prop time * 2: %f seconds\n", elapsed_2prop_time);
+            
             return fd;
         }
 
@@ -197,7 +215,7 @@ int llopen(LinkLayer connectionParameters) {
 
             while (STOP == FALSE) { //
                 // Returns after 5 chars have been input
-                int bytes = read(fd, received_buf, 5); // receive connection set
+                int bytes = read(fd, received_buf, 5);
 
                 int startOver = 0;
                 int stop = 0;
@@ -261,11 +279,15 @@ int llopen(LinkLayer connectionParameters) {
                 }
             }
 
+            
+           
+        
+                
             sendSup(fd, A_TR, C_UA); // send connection ua
             break;
         }
     }
-
+    
     return fd;
 }
 
@@ -588,5 +610,6 @@ int llclose(int fd, int showStatistics) {
     if (stop != 1) return -1;
     sendSup(fd, A_TR, C_UA);
     alarm(0);
+
     return close(fd);
 }

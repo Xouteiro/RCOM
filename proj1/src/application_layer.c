@@ -12,6 +12,8 @@
 #include <termios.h>
 #include <unistd.h>
 #include <math.h>
+#include <sys/time.h>
+
 
 
 unsigned char* parseControlPacket(unsigned char* packet, int size, int* nameSize) {
@@ -71,6 +73,12 @@ void parseDataPacket(const unsigned char* packet, const unsigned int packetSize,
     buffer += packetSize;
 }
 
+    struct timeval start_total_time, end_total_time, start_packet_time, end_packet_time;
+
+    double elapsed_total_time, elapsed_prop_time;
+
+    double elapsed_packet_time[50];
+
 void applicationLayer(const char* serialPort, const char* role, int baudRate,
                       int nTries, int timeout, const char* filename) {
     LinkLayer linkLayer;
@@ -103,15 +111,19 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
             printf("File size: %ld\n", fileSize);
             unsigned int cpSize;
             unsigned char* controlPacketStart = getControlPacket(2, filename, fileSize, &cpSize);
+            
             if (llwrite(fd, controlPacketStart, cpSize) == -1) { // send start packet
                 printf("Exit: error in start packet\n");
                 exit(-1);
             }
+
             printf("Start packet sent\n");
 
             unsigned char sequence = 0;
             unsigned char* content = getData(file, fileSize);
             long int bytesLeft = fileSize;
+            int k = 0;
+            gettimeofday(&start_total_time, NULL); //start total time
 
             while (bytesLeft >= 0) {
                 int dataSize = bytesLeft > (long int)MAX_PAYLOAD_SIZE ? MAX_PAYLOAD_SIZE : bytesLeft;
@@ -120,15 +132,24 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
 
                 int packetSize;
                 unsigned char* packet = getDataPacket(sequence, data, dataSize, &packetSize);
+                gettimeofday(&start_packet_time, NULL);
                 if (llwrite(fd, packet, packetSize) == -1) { // send data packet
                     printf("Exit: error in data packets\n");
                     exit(-1);
                 }
+                gettimeofday(&end_packet_time, NULL);
 
+                elapsed_packet_time[k] = (end_packet_time.tv_sec - start_packet_time.tv_sec) + 
+                   (end_packet_time.tv_usec - start_packet_time.tv_usec) / 1e6;
+                k++;
                 bytesLeft -= (long int)MAX_PAYLOAD_SIZE;
                 content += dataSize;
                 sequence = (sequence + 1) % 255;
             }
+            gettimeofday(&end_total_time, NULL); // Record the ending time
+            elapsed_total_time = (end_total_time.tv_sec - start_total_time.tv_sec) + 
+                   (end_total_time.tv_usec - start_total_time.tv_usec) / 1e6;
+
             printf("File sent!\n");
 
             unsigned char* controlPacketEnd = getControlPacket(3, filename, fileSize, &cpSize);
@@ -141,6 +162,14 @@ void applicationLayer(const char* serialPort, const char* role, int baudRate,
                 printf("Exit: error in llclose\n");
                 exit(-1);
             };
+            double mean = 0;
+            for(int i = 0; i < k; i++){
+                mean += elapsed_packet_time[i];
+                printf("Packet %d time: %fs\n", i, elapsed_packet_time[i]);
+            }
+            mean /= k;
+            printf("Mean packet transmisson time: %fs\n", mean);
+            printf("Total file transmission time = %fs\n", elapsed_total_time);
             printf("Disconnecting\n");
             break;
         }
