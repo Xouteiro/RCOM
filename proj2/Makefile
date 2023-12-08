@@ -8,4 +8,4 @@ $(EXEC): $(SRC_DIR)/download.c
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
-	rm -f $(EXEC)
+	find . -maxdepth 1 -type f -not -name 'Makefile' -exec rm -f {} \;
