@@ -83,7 +83,7 @@ int parse(char *input, struct URL *url) {
     char *host;
 
     if(isAnonymous == 0){
-        char *userpass = strtok(untilhost_aux,"@"); //<user>:<password>
+        strtok(untilhost_aux,"@"); //<user>:<password>
         host = strtok(NULL,"/"); //<host>
         strcpy(url->host, host);
         printf("host: %s\n", host);
